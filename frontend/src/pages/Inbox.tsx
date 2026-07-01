@@ -60,6 +60,11 @@ export function Inbox() {
     if (!loading && !token) navigate("/login");
   }, [loading, token, navigate]);
 
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
+
   useEffect(() => {
     if (!token) return;
     api.get("/users").then(({ data }) => setAgents(data));
@@ -326,7 +331,7 @@ export function Inbox() {
                 </Link>
               </>
             )}
-            <button onClick={logout} className="text-xs text-gray-400 hover:text-red-500">
+            <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-red-500">
               Sair
             </button>
           </div>

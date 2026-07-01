@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { Agent, ChannelConfigInfo, CompanySettings, Department, PlanUsage, QuickReply } from "../types";
 
 export function Team() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [settings, setSettings] = useState<CompanySettings | null>(null);
@@ -37,8 +37,14 @@ export function Team() {
   const [role, setRole] = useState<"ADMIN" | "AGENT">("AGENT");
 
   useEffect(() => {
+    if (!loading && !user) navigate("/login", { replace: true });
     if (!loading && user && user.role !== "ADMIN") navigate("/inbox");
   }, [loading, user, navigate]);
+
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
 
   function load() {
     api.get("/users").then(({ data }) => setAgents(data));
@@ -184,9 +190,14 @@ export function Team() {
           <h1 className="font-semibold text-gray-800">Gestão de equipe</h1>
           <p className="text-xs text-gray-400">{settings?.name}</p>
         </div>
-        <Link to="/inbox" className="text-sm text-blue-600 hover:underline">
-          ← Voltar pra inbox
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link to="/inbox" className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            Inbox
+          </Link>
+          <button onClick={handleLogout} className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600">
+            Sair
+          </button>
+        </div>
       </header>
 
       <main className="p-6 max-w-3xl mx-auto space-y-6">
