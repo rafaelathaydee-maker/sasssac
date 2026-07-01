@@ -16,7 +16,7 @@ function slugify(name: string): string {
 // GET /api/admin/companies -> visão geral de todas as empresas da plataforma
 export async function listCompanies(_req: AuthenticatedRequest, res: Response) {
   const companies = await prisma.company.findMany({
-    include: { plan: true, _count: { select: { users: true, conversations: true } } },
+    include: { plan: true, channelConfigs: true, _count: { select: { users: true, conversations: true } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -28,6 +28,12 @@ export async function listCompanies(_req: AuthenticatedRequest, res: Response) {
       isSuspended: c.isSuspended,
       createdAt: c.createdAt,
       plan: { id: c.plan.id, name: c.plan.name },
+      whatsapp: c.channelConfigs.find((channel: any) => channel.channel === "WHATSAPP")
+        ? {
+            externalAccountId: c.channelConfigs.find((channel: any) => channel.channel === "WHATSAPP")?.externalAccountId,
+            isActive: c.channelConfigs.find((channel: any) => channel.channel === "WHATSAPP")?.isActive,
+          }
+        : null,
       agentCount: c._count.users,
       conversationCount: c._count.conversations,
     }))
@@ -170,6 +176,76 @@ export async function createUserInCompany(req: AuthenticatedRequest, res: Respon
   await logAudit({ actorUserId: req.auth!.userId, actorRole: "SUPER_ADMIN", companyId, action: "user.create", targetType: "user", targetId: user.id, metadata: { role: data.role } });
 
   return res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role });
+}
+
+const adminWhatsappConfigSchema = z.object({
+  phoneNumberId: z.string().min(3),
+  accessToken: z.string().min(10),
+  wabaId: z.string().optional(),
+  departmentId: z.string().nullable().optional(),
+});
+
+// PUT /api/admin/companies/:id/channels/whatsapp -> super admin configura WhatsApp de uma empresa
+export async function upsertCompanyWhatsapp(req: AuthenticatedRequest, res: Response) {
+  const { id: companyId } = req.params;
+  const { phoneNumberId, accessToken, wabaId, departmentId } = adminWhatsappConfigSchema.parse(req.body);
+
+  const company = await prisma.company.findUnique({ where: { id: companyId } });
+  if (!company) throw new NotFoundError("Empresa nÃ£o encontrada");
+
+  const config = await prisma.channelConfig.upsert({
+    where: { companyId_channel: { companyId, channel: "WHATSAPP" } },
+    update: {
+      externalAccountId: phoneNumberId,
+      credentials: { phoneNumberId, accessToken, wabaId },
+      departmentId,
+      isActive: true,
+    },
+    create: {
+      companyId,
+      channel: "WHATSAPP",
+      externalAccountId: phoneNumberId,
+      credentials: { phoneNumberId, accessToken, wabaId },
+      departmentId,
+      isActive: true,
+    },
+  });
+
+  await logAudit({
+    actorUserId: req.auth!.userId,
+    actorRole: "SUPER_ADMIN",
+    companyId,
+    action: "company.whatsapp.connect",
+    targetType: "channelConfig",
+    targetId: config.id,
+    metadata: { phoneNumberId },
+  });
+
+  return res.status(201).json({
+    channel: config.channel,
+    externalAccountId: config.externalAccountId,
+    isActive: config.isActive,
+    configured: true,
+  });
+}
+
+// DELETE /api/admin/companies/:id/channels/whatsapp -> super admin remove WhatsApp da empresa
+export async function removeCompanyWhatsapp(req: AuthenticatedRequest, res: Response) {
+  const { id: companyId } = req.params;
+
+  await prisma.channelConfig
+    .delete({ where: { companyId_channel: { companyId, channel: "WHATSAPP" } } })
+    .catch(() => null);
+
+  await logAudit({
+    actorUserId: req.auth!.userId,
+    actorRole: "SUPER_ADMIN",
+    companyId,
+    action: "company.whatsapp.remove",
+    targetType: "channelConfig",
+  });
+
+  return res.status(204).send();
 }
 
 // POST /api/admin/users/:id/reset-password -> super admin reseta senha de qualquer usuário

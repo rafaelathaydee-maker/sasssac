@@ -4,6 +4,7 @@ import { asyncHandler } from "../../lib/asyncHandler";
 import {
   listCompanies, createCompany, updateCompany, getCompanyDetail,
   setSuspended, createUserInCompany, resetPassword, listAuditLogs, exportCompanyData,
+  upsertCompanyWhatsapp, removeCompanyWhatsapp,
 } from "./admin.controller";
 
 const router = Router();
@@ -18,6 +19,8 @@ router.patch("/companies/:id", asyncHandler(updateCompany));
 router.post("/companies/:id/suspend", asyncHandler((req, res) => setSuspended(req as any, res, true)));
 router.post("/companies/:id/activate", asyncHandler((req, res) => setSuspended(req as any, res, false)));
 router.post("/companies/:id/users", asyncHandler(createUserInCompany));
+router.put("/companies/:id/channels/whatsapp", asyncHandler(upsertCompanyWhatsapp));
+router.delete("/companies/:id/channels/whatsapp", asyncHandler(removeCompanyWhatsapp));
 router.post("/users/:id/reset-password", asyncHandler(resetPassword));
 router.get("/audit-logs", asyncHandler(listAuditLogs));
 
