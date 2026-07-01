@@ -56,12 +56,14 @@ async function processIncomingMessage(companyId: string, message: any) {
       data: { companyId, phone, name: message.pushName || phone },
     }));
 
+  let isNewConversation = false;
   let conversation = await prisma.conversation.findFirst({
     where: { companyId, channel: "WHATSAPP", externalId: remoteJid, status: { not: "RESOLVED" } },
     include: { assignedUser: { select: { id: true, name: true } }, department: { select: { id: true, name: true } } },
   });
 
   if (!conversation) {
+    isNewConversation = true;
     conversation = await prisma.conversation.create({
       data: {
         companyId,
@@ -91,13 +93,17 @@ async function processIncomingMessage(companyId: string, message: any) {
   });
 
   const io = getIO();
-  io.to(`company:${companyId}`).emit("conversation:new", {
+  const payload = {
     id: conversation.id,
     status: conversation.status,
     contact,
     assignedUser: conversation.assignedUser,
     department: conversation.department,
     lastMessage: saved,
+  };
+  io.to(`company:${companyId}`).emit(isNewConversation ? "conversation:new" : "conversation:updated", {
+    ...payload,
+    conversationId: conversation.id,
   });
   io.to(`conversation:${conversation.id}`).emit("message:new", saved);
 }

@@ -76,21 +76,25 @@ export function Inbox() {
   }
   useEffect(refreshSummary, [token]);
 
+  function reloadConversations() {
+    return api
+      .get("/conversations", {
+        params: {
+          filter,
+          ...(statusFilter ? { status: statusFilter } : {}),
+          ...(filter === "all" && agentFilter ? { agentId: agentFilter } : {}),
+          ...(departmentFilter ? { departmentId: departmentFilter } : {}),
+          ...(search ? { search } : {}),
+        },
+      })
+      .then(({ data }) => setConversations(data));
+  }
+
   // recarrega a inbox sempre que aba/busca/filtros mudam (debounce simples pra busca)
   useEffect(() => {
     if (!token) return;
     const handle = setTimeout(() => {
-      api
-        .get("/conversations", {
-          params: {
-            filter,
-            ...(statusFilter ? { status: statusFilter } : {}),
-            ...(filter === "all" && agentFilter ? { agentId: agentFilter } : {}),
-            ...(departmentFilter ? { departmentId: departmentFilter } : {}),
-            ...(search ? { search } : {}),
-          },
-        })
-        .then(({ data }) => setConversations(data));
+      reloadConversations();
     }, 300);
     return () => clearTimeout(handle);
   }, [token, filter, statusFilter, agentFilter, departmentFilter, search]);
@@ -110,37 +114,72 @@ export function Inbox() {
     if (!socket || !user) return;
     const currentUser = user;
 
-    function handleNewConversation(payload: any) {
-      const item: ConversationListItem = {
-        id: payload.id,
+    function toConversationListItem(payload: any): ConversationListItem {
+      return {
+        id: payload.id || payload.conversationId,
         status: payload.status,
         contact: payload.contact,
-        isPinned: false,
-        isFavorite: false,
-        priority: "NORMAL",
-        department: null,
+        isPinned: payload.isPinned ?? false,
+        isFavorite: payload.isFavorite ?? false,
+        priority: payload.priority ?? "NORMAL",
+        department: payload.department ?? null,
         assignedUser: payload.assignedUser ?? null,
         lastMessage: payload.lastMessage,
         updatedAt: new Date().toISOString(),
       };
+    }
+
+    function handleNewConversation(payload: any) {
+      const item = toConversationListItem(payload);
       if (matchesFilter(item, filter, currentUser.id)) {
-        setConversations((prev) => [item, ...prev]);
+        setConversations((prev) => {
+          const withoutDuplicate = prev.filter((c) => c.id !== item.id);
+          return [item, ...withoutDuplicate];
+        });
+      } else {
+        reloadConversations();
       }
       refreshSummary();
     }
 
-    function handleConversationUpdated(payload: { conversationId: string; lastMessage: Message }) {
+    function handleConversationUpdated(payload: any) {
+      if (!payload.contact) {
+        setConversations((prev) => {
+          if (!prev.some((c) => c.id === payload.conversationId)) {
+            reloadConversations();
+            return prev;
+          }
+          const updated = prev.map((c) =>
+            c.id === payload.conversationId ? { ...c, lastMessage: payload.lastMessage } : c
+          );
+          return [...updated].sort((a, b) => {
+            const at = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+            const bt = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+            return bt - at;
+          });
+        });
+        refreshSummary();
+        return;
+      }
+      const item: ConversationListItem = {
+        ...toConversationListItem(payload),
+        status: payload.status,
+      };
       setConversations((prev) => {
-        if (!prev.some((c) => c.id === payload.conversationId)) return prev;
-        const updated = prev.map((c) =>
-          c.id === payload.conversationId ? { ...c, lastMessage: payload.lastMessage } : c
-        );
+        const exists = prev.some((c) => c.id === item.id);
+        if (!exists) {
+          if (matchesFilter(item, filter, currentUser.id)) return [item, ...prev];
+          reloadConversations();
+          return prev;
+        }
+        const updated = prev.map((c) => (c.id === item.id ? { ...c, ...item } : c));
         return [...updated].sort((a, b) => {
           const at = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
           const bt = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
           return bt - at;
         });
       });
+      refreshSummary();
     }
 
     function handleMetaUpdated(payload: {
