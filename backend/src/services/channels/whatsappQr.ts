@@ -5,6 +5,7 @@ import makeWASocket, {
   Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
   useMultiFileAuthState,
   WASocket,
 } from "@whiskeysockets/baileys";
@@ -113,7 +114,7 @@ export function getWhatsappQrStatus(companyId: string) {
 
 export async function startWhatsappQrSession(companyId: string) {
   const existing = sessions.get(companyId);
-  if (existing?.status === "connected") {
+  if (existing?.status === "connected" || existing?.status === "connecting") {
     return getWhatsappQrStatus(companyId);
   }
   if (existing) await stopWhatsappQrSession(companyId);
@@ -124,10 +125,15 @@ export async function startWhatsappQrSession(companyId: string) {
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir(companyId));
   const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1023204200] as [number, number, number] }));
   const socket = makeWASocket({
-    auth: state,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger as any),
+    },
     version,
     browser: Browsers.macOS("Sasssac"),
     connectTimeoutMs: 60_000,
+    markOnlineOnConnect: false,
+    syncFullHistory: false,
     printQRInTerminal: false,
   });
   session.socket = socket;
@@ -163,16 +169,31 @@ export async function startWhatsappQrSession(companyId: string) {
         update: { externalAccountId: session.jid, credentials: { mode: "QR" }, isActive: true },
         create: { companyId, channel: "WHATSAPP", externalAccountId: session.jid, credentials: { mode: "QR" } },
       });
+      logger.info({ companyId, jid: session.jid }, "WhatsApp QR conectado");
     }
     if (update.connection === "close") {
       clearTimeout(qrTimeout);
       const code = (update.lastDisconnect?.error as any)?.output?.statusCode;
       session.status = "disconnected";
       session.socket = null;
-      session.lastError = code === DisconnectReason.loggedOut ? "WhatsApp desconectado pelo celular." : "Conexao caiu. Gere um novo QR Code.";
-      if (code !== DisconnectReason.loggedOut) {
-        sessions.delete(companyId);
+      logger.warn({ companyId, code }, "WhatsApp QR fechou conexao");
+      if (code === DisconnectReason.loggedOut) {
+        session.lastError = "WhatsApp desconectado pelo celular.";
+        return;
       }
+      session.status = "connecting";
+      session.lastError = "WhatsApp pediu reconexao. Tentando novamente...";
+      setTimeout(() => {
+        sessions.delete(companyId);
+        startWhatsappQrSession(companyId).catch((err) => {
+          logger.error({ err, companyId }, "Erro ao reconectar WhatsApp QR");
+          const failed = sessions.get(companyId);
+          if (failed) {
+            failed.status = "disconnected";
+            failed.lastError = "Falha ao reconectar. Gere um novo QR Code.";
+          }
+        });
+      }, 1500);
     }
   });
 
