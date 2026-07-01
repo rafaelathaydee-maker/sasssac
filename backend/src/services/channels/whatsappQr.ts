@@ -1,12 +1,12 @@
-import path from "path";
-import os from "os";
 import QRCode from "qrcode";
 import makeWASocket, {
   Browsers,
+  BufferJSON,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  initAuthCreds,
   makeCacheableSignalKeyStore,
-  useMultiFileAuthState,
+  proto,
   WASocket,
 } from "@whiskeysockets/baileys";
 import { prisma } from "../../lib/prisma";
@@ -26,9 +26,73 @@ type Session = {
 
 const sessions = new Map<string, Session>();
 
-function sessionDir(companyId: string) {
-  const root = process.env.WHATSAPP_SESSION_DIR || path.join(os.tmpdir(), "sasssac-whatsapp-sessions");
-  return path.join(root, companyId.replace(/[^a-zA-Z0-9_-]/g, ""));
+function serializeAuth(value: any) {
+  return JSON.parse(JSON.stringify(value, BufferJSON.replacer));
+}
+
+function deserializeAuth(value: any) {
+  return JSON.parse(JSON.stringify(value), BufferJSON.reviver);
+}
+
+async function readStoredAuth(companyId: string) {
+  const config = await prisma.channelConfig.findUnique({ where: { companyId_channel: { companyId, channel: "WHATSAPP" } } });
+  const credentials = config?.credentials as any;
+  return credentials?.auth ? deserializeAuth(credentials.auth) : { creds: initAuthCreds(), keys: {} };
+}
+
+async function writeStoredAuth(companyId: string, auth: any, externalAccountId?: string | null) {
+  await prisma.channelConfig.upsert({
+    where: { companyId_channel: { companyId, channel: "WHATSAPP" } },
+    update: {
+      externalAccountId: externalAccountId ?? undefined,
+      credentials: { mode: "QR", auth: serializeAuth(auth) },
+      isActive: true,
+    },
+    create: {
+      companyId,
+      channel: "WHATSAPP",
+      externalAccountId: externalAccountId ?? null,
+      credentials: { mode: "QR", auth: serializeAuth(auth) },
+    },
+  });
+}
+
+async function usePrismaAuthState(companyId: string) {
+  const auth = await readStoredAuth(companyId);
+  const saveCreds = () => writeStoredAuth(companyId, auth);
+
+  return {
+    state: {
+      creds: auth.creds,
+      keys: {
+        get: async (type: string, ids: string[]) => {
+          const data: Record<string, any> = {};
+          for (const id of ids) {
+            let value = auth.keys?.[type]?.[id];
+            if (type === "app-state-sync-key" && value) {
+              value = proto.Message.AppStateSyncKeyData.fromObject(value);
+            }
+            data[id] = value;
+          }
+          return data;
+        },
+        set: async (data: Record<string, Record<string, any>>) => {
+          auth.keys ||= {};
+          for (const category of Object.keys(data)) {
+            auth.keys[category] ||= {};
+            for (const id of Object.keys(data[category])) {
+              const value = data[category][id];
+              if (value) auth.keys[category][id] = value;
+              else delete auth.keys[category][id];
+            }
+          }
+          await writeStoredAuth(companyId, auth);
+        },
+      },
+    },
+    saveCreds,
+    auth,
+  };
 }
 
 function getText(message: any) {
@@ -128,7 +192,7 @@ export async function startWhatsappQrSession(companyId: string) {
   const session: Session = { companyId, status: "connecting", qrDataUrl: null, jid: null, lastError: null, socket: null };
   sessions.set(companyId, session);
 
-  const { state, saveCreds } = await useMultiFileAuthState(sessionDir(companyId));
+  const { state, saveCreds, auth } = await usePrismaAuthState(companyId);
   const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1023204200] as [number, number, number] }));
   const socket = makeWASocket({
     auth: {
@@ -170,11 +234,7 @@ export async function startWhatsappQrSession(companyId: string) {
       session.qrDataUrl = null;
       session.jid = socket.user?.id || null;
       session.lastError = null;
-      await prisma.channelConfig.upsert({
-        where: { companyId_channel: { companyId, channel: "WHATSAPP" } },
-        update: { externalAccountId: session.jid, credentials: { mode: "QR" }, isActive: true },
-        create: { companyId, channel: "WHATSAPP", externalAccountId: session.jid, credentials: { mode: "QR" } },
-      });
+      await writeStoredAuth(companyId, auth, session.jid);
       logger.info({ companyId, jid: session.jid }, "WhatsApp QR conectado");
     }
     if (update.connection === "close") {
@@ -222,4 +282,19 @@ export async function sendWhatsappQrMessage(companyId: string, remoteJid: string
     throw new Error("WhatsApp QR nao esta conectado");
   }
   return session.socket.sendMessage(remoteJid, { text: content });
+}
+
+export async function restoreWhatsappQrSessions() {
+  const configs = await prisma.channelConfig.findMany({
+    where: { channel: "WHATSAPP", isActive: true },
+    select: { companyId: true, credentials: true },
+  });
+  for (const config of configs) {
+    const credentials = config.credentials as any;
+    if (credentials?.mode === "QR" && credentials?.auth?.creds?.registered) {
+      startWhatsappQrSession(config.companyId).catch((err) =>
+        logger.error({ err, companyId: config.companyId }, "Erro ao restaurar WhatsApp QR")
+      );
+    }
+  }
 }
