@@ -1,6 +1,8 @@
 import path from "path";
+import os from "os";
 import QRCode from "qrcode";
 import makeWASocket, {
+  Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
@@ -17,13 +19,15 @@ type Session = {
   status: SessionStatus;
   qrDataUrl: string | null;
   jid: string | null;
+  lastError: string | null;
   socket: WASocket | null;
 };
 
 const sessions = new Map<string, Session>();
 
 function sessionDir(companyId: string) {
-  return path.join(process.cwd(), ".whatsapp-sessions", companyId.replace(/[^a-zA-Z0-9_-]/g, ""));
+  const root = process.env.WHATSAPP_SESSION_DIR || path.join(os.tmpdir(), "sasssac-whatsapp-sessions");
+  return path.join(root, companyId.replace(/[^a-zA-Z0-9_-]/g, ""));
 }
 
 function getText(message: any) {
@@ -103,22 +107,38 @@ export function getWhatsappQrStatus(companyId: string) {
     status: session?.status || "idle",
     qrDataUrl: session?.qrDataUrl || null,
     jid: session?.jid || null,
+    lastError: session?.lastError || null,
   };
 }
 
 export async function startWhatsappQrSession(companyId: string) {
   const existing = sessions.get(companyId);
-  if (existing?.status === "connected" || existing?.status === "qr" || existing?.status === "connecting") {
+  if (existing?.status === "connected") {
     return getWhatsappQrStatus(companyId);
   }
+  if (existing) await stopWhatsappQrSession(companyId);
 
-  const session: Session = { companyId, status: "connecting", qrDataUrl: null, jid: null, socket: null };
+  const session: Session = { companyId, status: "connecting", qrDataUrl: null, jid: null, lastError: null, socket: null };
   sessions.set(companyId, session);
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir(companyId));
-  const { version } = await fetchLatestBaileysVersion();
-  const socket = makeWASocket({ auth: state, version, printQRInTerminal: false });
+  const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1023204200] as [number, number, number] }));
+  const socket = makeWASocket({
+    auth: state,
+    version,
+    browser: Browsers.macOS("Sasssac"),
+    connectTimeoutMs: 60_000,
+    printQRInTerminal: false,
+  });
   session.socket = socket;
+
+  const qrTimeout = setTimeout(() => {
+    if (session.status === "connecting") {
+      session.status = "disconnected";
+      session.lastError = "Nao foi possivel gerar o QR Code. Tente novamente.";
+      session.socket?.end(undefined);
+    }
+  }, 45_000);
 
   socket.ev.on("creds.update", saveCreds);
   socket.ev.on("messages.upsert", async ({ messages }) => {
@@ -130,11 +150,14 @@ export async function startWhatsappQrSession(companyId: string) {
     if (update.qr) {
       session.status = "qr";
       session.qrDataUrl = await QRCode.toDataURL(update.qr);
+      session.lastError = null;
     }
     if (update.connection === "open") {
+      clearTimeout(qrTimeout);
       session.status = "connected";
       session.qrDataUrl = null;
       session.jid = socket.user?.id || null;
+      session.lastError = null;
       await prisma.channelConfig.upsert({
         where: { companyId_channel: { companyId, channel: "WHATSAPP" } },
         update: { externalAccountId: session.jid, credentials: { mode: "QR" }, isActive: true },
@@ -142,9 +165,11 @@ export async function startWhatsappQrSession(companyId: string) {
       });
     }
     if (update.connection === "close") {
+      clearTimeout(qrTimeout);
       const code = (update.lastDisconnect?.error as any)?.output?.statusCode;
       session.status = "disconnected";
       session.socket = null;
+      session.lastError = code === DisconnectReason.loggedOut ? "WhatsApp desconectado pelo celular." : "Conexao caiu. Gere um novo QR Code.";
       if (code !== DisconnectReason.loggedOut) {
         sessions.delete(companyId);
       }

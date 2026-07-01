@@ -22,7 +22,7 @@ export function Team() {
   const [qrMessage, setQrMessage] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [showWhatsapp, setShowWhatsapp] = useState(false);
-  const [waQrStatus, setWaQrStatus] = useState<{ status: string; qrDataUrl: string | null; jid: string | null } | null>(null);
+  const [waQrStatus, setWaQrStatus] = useState<{ status: string; qrDataUrl: string | null; jid: string | null; lastError?: string | null } | null>(null);
   const [waPhoneId, setWaPhoneId] = useState("");
   const [waToken, setWaToken] = useState("");
   const [editing, setEditing] = useState<Agent | null>(null);
@@ -129,9 +129,13 @@ export function Team() {
   useEffect(() => {
     if (!showWhatsapp) return;
     const timer = setInterval(async () => {
-      const { data } = await api.get("/channels/whatsapp/qr");
-      setWaQrStatus(data);
-      if (data.status === "connected") load();
+      try {
+        const { data } = await api.get("/channels/whatsapp/qr");
+        setWaQrStatus(data);
+        if (data.status === "connected") load();
+      } catch (err: any) {
+        setError(err?.response?.data?.error?.toString() || "Nao foi possivel consultar o WhatsApp");
+      }
     }, 2500);
     return () => clearInterval(timer);
   }, [showWhatsapp]);
@@ -493,8 +497,16 @@ export function Team() {
                 </div>
               ) : waQrStatus?.qrDataUrl ? (
                 <img src={waQrStatus.qrDataUrl} alt="QR Code do WhatsApp" className="h-56 w-56 rounded-md bg-white p-2 shadow-sm" />
+              ) : waQrStatus?.status === "disconnected" ? (
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-red-700">WhatsApp nao conectou</p>
+                  <p className="mt-1 text-xs text-slate-500">{waQrStatus.lastError || "Clique em Novo QR e tente escanear de novo."}</p>
+                </div>
               ) : (
-                <p className="text-sm text-slate-500">Gerando QR Code...</p>
+                <div className="text-center">
+                  <p className="text-sm text-slate-500">Gerando QR Code...</p>
+                  <p className="mt-1 text-xs text-slate-400">Se demorar mais de alguns segundos, clique em Novo QR.</p>
+                </div>
               )}
             </div>
             <p className="hidden text-xs text-gray-400">Dados da conexao antiga</p>
