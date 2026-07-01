@@ -1,0 +1,385 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  SUPER_ADMIN // eu — administra a plataforma inteira, não pertence a nenhuma empresa
+  ADMIN       // dono/gestor da empresa
+  AGENT       // atendente
+}
+
+enum ConversationStatus {
+  OPEN         // aberta (sem ninguém atendendo ainda)
+  IN_PROGRESS  // em atendimento (tem agente responsável trabalhando nela)
+  RESOLVED     // resolvida
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  AUDIO
+  VIDEO
+  INTERNAL // nota interna entre agentes — nunca sai pelo canal externo nem chega no widget
+}
+
+enum ConversationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SenderType {
+  USER
+  CONTACT
+  SYSTEM
+}
+  USER
+  CONTACT
+  SYSTEM
+}
+
+// Canais de atendimento suportados. INSTAGRAM existe só como contrato pronto
+// pro futuro (provider stub) — não tem integração real ainda.
+enum Channel {
+  WEBCHAT
+  WHATSAPP
+  INSTAGRAM
+}
+
+enum MessageDirection {
+  INBOUND  // chegou de fora pra dentro (cliente -> nós)
+  OUTBOUND // saiu de dentro pra fora (nós -> cliente)
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum PlanId {
+  FREE
+  BASIC
+  PRO
+}
+
+// Empresa que assina o SaaS (multi-tenant)
+// Trilha de auditoria — toda ação administrativa relevante fica registrada aqui.
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?  // null = ação do próprio sistema (ex: retry automático)
+  actorRole   String?
+  companyId   String?  // empresa afetada (null pra ações fora de escopo, ex: nada hoje)
+  action      String   // ex: "company.create", "user.update", "channel.whatsapp.connect"
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([actorUserId])
+}
+
+// Fila de reenvio de mensagens de saída (ex: WhatsApp fora do ar) — sobrevive a restart
+// porque é persistida no banco, não só em memória.
+model OutboundQueueItem {
+  id            String   @id @default(uuid())
+  companyId     String
+  conversationId String
+  messageId     String   @unique
+  channel       Channel
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError     String?
+  status        String   @default("PENDING") // PENDING | SENT | FAILED_PERMANENT
+  createdAt     DateTime @default(now())
+
+  @@index([status, nextAttemptAt])
+}
+
+// Departamentos/filas de atendimento (Vendas, Suporte, Financeiro, etc.)
+model Department {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  description String?
+  keywords  String[] @default([]) // se a mensagem contiver uma dessas palavras, cai aqui automaticamente
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  agents        User[]         @relation("UserDepartments")
+  conversations Conversation[]
+  lastAssignedUserId String? // cursor de round-robin só deste departamento
+
+  @@index([companyId])
+}
+
+// Respostas rápidas — atendente digita "/shortcut" e o sistema sugere a mensagem pronta
+model QuickReply {
+  id        String   @id @default(uuid())
+  companyId String
+  title     String
+  shortcut  String
+  message   String
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, shortcut])
+  @@index([companyId])
+}
+
+// Fluxo de chatbot visual — nodes/edges no formato de um editor de fluxo (tipo React Flow).
+// Guardado como JSON porque a árvore é desenhada visualmente; validar a estrutura é
+// responsabilidade do motor (lib/chatbotEngine.ts), não do schema.
+model ChatbotFlow {
+  id        String    @id @default(uuid())
+  companyId String
+  name      String
+  isActive  Boolean   @default(false)
+  channels  Channel[] // em quais canais esse fluxo roda (WEBCHAT, WHATSAPP)
+  nodes     Json      // [{ id, type, data, position }]
+  edges     Json      // [{ id, source, target, sourceHandle? }]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  COMPLETED
+  CANCELLED
+}
+
+model Campaign {
+  id                 String         @id @default(uuid())
+  companyId          String
+  name               String
+  message            String
+  channel            Channel        @default(WHATSAPP)
+  scheduledAt        DateTime?      // null = dispara imediatamente
+  status             CampaignStatus @default(DRAFT)
+  rateLimitPerMinute Int            @default(20) // limite de envio pra não estourar o canal
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  company  Company           @relation(fields: [companyId], references: [id])
+  contacts CampaignContact[]
+
+  @@index([companyId, status])
+}
+
+model CampaignContact {
+  id         String    @id @default(uuid())
+  campaignId String
+  contactId  String
+  status     String    @default("PENDING") // PENDING | SENT | FAILED
+  messageId  String?
+  error      String?
+  sentAt     DateTime?
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+  contact  Contact  @relation(fields: [contactId], references: [id])
+
+  @@index([campaignId, status])
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  // distribuição automática de conversas novas (round-robin entre agentes online)
+  autoDistributionEnabled Boolean @default(true)
+  lastAssignedUserId      String? // "cursor" do round-robin (id do último agente que recebeu uma conversa)
+  isSuspended             Boolean @default(false) // suspensa pelo super admin -> ninguém da empresa loga
+
+  // white-label / personalização do widget — editável pelo ADMIN da própria empresa
+  logoUrl         String?
+  primaryColor    String  @default("#2563eb")
+  welcomeMessage  String  @default("Olá! Como podemos ajudar?")
+  offlineMessage  String  @default("Estamos fora do horário de atendimento. Deixe sua mensagem que respondemos em breve.")
+  businessHours   Json?   // null = atendimento 24/7. Formato: { timezone, ranges: [{day,start,end}] }
+
+  planId PlanId @default(FREE)
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  users          User[]
+  contacts       Contact[]
+  conversations  Conversation[]
+  channelConfigs ChannelConfig[]
+  departments    Department[]
+  quickReplies   QuickReply[]
+  chatbotFlows   ChatbotFlow[]
+  campaigns      Campaign[]
+
+  @@index([planId])
+}
+
+// Catálogo de planos comerciais — os limites vivem aqui (não duplicados na Company)
+model Plan {
+  id                       PlanId    @id
+  name                     String
+  priceCents               Int
+  maxAgents                Int
+  maxConversationsPerMonth Int
+  channels                 Channel[] // quais canais esse plano libera
+
+  companies Company[]
+}
+
+// Credenciais/configuração de um canal externo para uma empresa (ex: WhatsApp Cloud API)
+model ChannelConfig {
+  id        String   @id @default(uuid())
+  companyId String
+  channel   Channel
+
+  // identificador externo usado pra rotear webhooks até a empresa certa
+  // (ex: phone_number_id do WhatsApp). Não é segredo, por isso fica fora do JSON.
+  externalAccountId String?
+  departmentId       String? // todo contato que chegar por esse número/canal cai nesse departamento
+
+  // token de acesso e outros dados sensíveis do canal — nunca devolvido inteiro pela API
+  credentials Json
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, channel])
+  @@index([channel, externalAccountId])
+}
+
+// Atendente / admin que faz login no painel
+model User {
+  id           String    @id @default(uuid())
+  companyId    String?   // null pra SUPER_ADMIN — todos os outros papéis pertencem a uma empresa
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         UserRole  @default(AGENT)
+  isOnline     Boolean   @default(false)
+  isActive     Boolean   @default(true) // desativado = não consegue mais logar, mas histórico é preservado
+  lastSeenAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  company       Company?       @relation(fields: [companyId], references: [id])
+  conversations Conversation[] @relation("AssignedAgent")
+  messages      Message[]
+  departments   Department[]   @relation("UserDepartments")
+
+  @@index([companyId])
+}
+
+// Cliente final que conversa pelos canais (não tem login)
+enum PipelineStage {
+  NEW_LEAD
+  NEGOTIATION
+  PROPOSAL
+  WON
+  LOST
+}
+
+model Contact {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  email     String?
+  phone     String?
+  notes     String?  // observações internas do time sobre esse cliente
+  tags      String[] @default([])
+  pipelineStage     PipelineStage @default(NEW_LEAD)
+  pipelineUpdatedAt DateTime?
+  createdAt DateTime @default(now())
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  conversations Conversation[]
+  messages      Message[]
+  campaignContacts CampaignContact[]
+
+  @@index([companyId])
+  @@index([companyId, phone])
+}
+
+// Uma conversa = uma "caixa" entre um contato e a empresa, em um canal específico
+model Conversation {
+  id             String             @id @default(uuid())
+  companyId      String
+  contactId      String
+  assignedUserId String?
+  status         ConversationStatus @default(OPEN)
+
+  channel      Channel @default(WEBCHAT)
+  externalId   String? // referência da conversa no canal externo (ex: thread/id do provedor), quando existir
+  metadata     Json?   // dados extra específicos do canal (ex: contexto, campanha, etc.)
+  departmentId String? // fila/departamento (Vendas, Suporte...) — null = sem departamento
+  isPinned     Boolean              @default(false)
+  isFavorite   Boolean              @default(false)
+  priority     ConversationPriority @default(NORMAL)
+  botFlowId    String?  // fluxo do chatbot em execução nessa conversa (null = sem bot ou já transferida)
+  botState     Json?    // { currentNodeId, variables } — onde o bot parou esperando resposta
+  resolvedAt   DateTime? // quando virou RESOLVED por último — base do "tempo médio de atendimento"
+  rating       Int?      // nota 1-5 dada pelo cliente
+  ratedAt      DateTime?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastMessageAt DateTime?
+
+  company      Company     @relation(fields: [companyId], references: [id])
+  contact      Contact     @relation(fields: [contactId], references: [id])
+  assignedUser User?       @relation("AssignedAgent", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  messages     Message[]
+
+  @@index([companyId, status])
+  @@index([assignedUserId])
+  @@index([companyId, channel])
+  @@index([departmentId])
+}
+
+// Mensagem dentro de uma conversa
+model Message {
+  id             String     @id @default(uuid())
+  conversationId String
+  senderType     SenderType
+  userId         String?
+  contactId      String?
+  content        String
+  createdAt      DateTime   @default(now())
+  readAt         DateTime?
+
+  direction         MessageDirection @default(OUTBOUND)
+  status            MessageStatus    @default(SENT)
+  channelMessageId  String?          // id que o provedor externo deu pra essa mensagem (rastreio de entrega/leitura)
+
+  type      MessageType @default(TEXT)
+  mediaUrl  String?
+  fileName  String?
+  mimeType  String?
+  fileSize  Int?        // bytes
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contact      Contact?     @relation(fields: [contactId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([channelMessageId])
+}
