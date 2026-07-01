@@ -40,10 +40,6 @@ enum SenderType {
   CONTACT
   SYSTEM
 }
-  USER
-  CONTACT
-  SYSTEM
-}
 
 // Canais de atendimento suportados. INSTAGRAM existe só como contrato pronto
 // pro futuro (provider stub) — não tem integração real ainda.
