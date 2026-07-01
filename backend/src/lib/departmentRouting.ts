@@ -1,9 +1,13 @@
-type DepartmentLike = { id: string; keywords?: string[] | null };
+import { prisma } from "./prisma";
 
-export function matchDepartmentByKeywords(message: string, departments: DepartmentLike[]) {
+export async function matchDepartmentByKeywords(companyId: string, message: string): Promise<string | null> {
+  const departments = await prisma.department.findMany({
+    where: { companyId, active: true },
+    select: { id: true, keywords: true },
+  });
   const text = message.toLowerCase();
-  return departments.find((department) =>
+  const match = departments.find((department) =>
     (department.keywords || []).some((keyword) => text.includes(keyword.toLowerCase())),
-  ) || null;
+  );
+  return match?.id || null;
 }
-

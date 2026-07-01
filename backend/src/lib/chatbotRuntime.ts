@@ -1,4 +1,3 @@
-export async function maybeStartBot() {
+export async function maybeStartBot(_conversationId: string) {
   return null;
 }
-

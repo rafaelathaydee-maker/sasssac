@@ -42,7 +42,7 @@ export async function login(req: TenantRequest & AuthenticatedRequest, res: Resp
     throw new AppError("Acesse pelo endereço da sua empresa (empresa.saaschat.com) para entrar.", 403);
   }
 
-  const token = signToken({ userId: user.id, companyId: user.companyId, role: user.role });
+  const token = signToken({ userId: user.id, companyId: user.companyId || "", role: user.role });
 
   return res.json({
     token,

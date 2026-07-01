@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 type AuditInput = {
   actorUserId?: string;
   actorRole?: string;
-  companyId?: string;
+  companyId?: string | null;
   action: string;
   targetType?: string;
   targetId?: string;
@@ -23,4 +23,3 @@ export async function logAudit(input: AuditInput) {
     },
   }).catch(() => null);
 }
-

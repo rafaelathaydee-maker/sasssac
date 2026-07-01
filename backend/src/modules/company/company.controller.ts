@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { AuthenticatedRequest } from "../../middlewares/auth";
@@ -108,7 +109,16 @@ export async function updateBranding(req: AuthenticatedRequest, res: Response) {
   const { companyId } = req.auth!;
   const data = brandingSchema.parse(req.body);
 
-  const company = await prisma.company.update({ where: { id: companyId! }, data });
+  const updateData: Prisma.CompanyUpdateInput = {};
+  if ("logoUrl" in data) updateData.logoUrl = data.logoUrl;
+  if (data.primaryColor !== undefined) updateData.primaryColor = data.primaryColor;
+  if (data.welcomeMessage !== undefined) updateData.welcomeMessage = data.welcomeMessage;
+  if (data.offlineMessage !== undefined) updateData.offlineMessage = data.offlineMessage;
+  if (data.businessHours !== undefined) {
+    updateData.businessHours = data.businessHours === null ? Prisma.JsonNull : data.businessHours;
+  }
+
+  const company = await prisma.company.update({ where: { id: companyId! }, data: updateData });
   await logAudit({ actorUserId: req.auth!.userId, actorRole: "ADMIN", companyId, action: "company.branding.update", metadata: data });
 
   return res.json({

@@ -1,10 +1,11 @@
+import { Server as HttpServer } from "http";
 import { Server } from "socket.io";
 import { verifyToken } from "../lib/jwt";
 import { logger } from "../lib/logger";
 
 let io: Server | null = null;
 
-export function initSocket(server: Parameters<typeof Server>[0], corsOrigin: string) {
+export function initSocket(server: HttpServer, corsOrigin: string) {
   io = new Server(server, { cors: { origin: corsOrigin, credentials: true } });
 
   io.use((socket, next) => {
@@ -37,4 +38,3 @@ export function getIO() {
   }
   return io;
 }
-
