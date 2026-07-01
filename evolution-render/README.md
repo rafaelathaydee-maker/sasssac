@@ -2,6 +2,8 @@
 
 Este servico e separado do backend do Sasssac. Ele segura a conexao do WhatsApp por QR Code e envia as mensagens para o backend via webhook.
 
+Imagem Docker usada: `evoapicloud/evolution-api:latest`.
+
 ## Criar no Render
 
 1. Clique em `New` -> `Web Service`.
@@ -42,4 +44,3 @@ Depois disso, no painel do Sasssac:
 ```txt
 Equipe e canais -> Conectar WhatsApp -> escanear QR Code
 ```
-
