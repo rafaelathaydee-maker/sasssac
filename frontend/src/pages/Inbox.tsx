@@ -38,7 +38,7 @@ export function Inbox() {
   const navigate = useNavigate();
   const socket = useSocket(token ? { token } : null);
 
-  const [filter, setFilter] = useState<ConversationFilter>("mine");
+  const [filter, setFilter] = useState<ConversationFilter>("unassigned");
   const [statusFilter, setStatusFilter] = useState<ConversationStatus | "">("");
   const [agentFilter, setAgentFilter] = useState<string>("");
   const [departmentFilter, setDepartmentFilter] = useState<string>("");
@@ -100,6 +100,15 @@ export function Inbox() {
   }, [token, filter, statusFilter, agentFilter, departmentFilter, search]);
 
   useEffect(() => {
+    if (!token) return;
+    const timer = setInterval(() => {
+      reloadConversations();
+      refreshSummary();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [token, filter, statusFilter, agentFilter, departmentFilter, search]);
+
+  useEffect(() => {
     if (!socket) return;
     function handlePresence(p: { userId: string; isOnline: boolean }) {
       setAgents((prev) => prev.map((a) => (a.id === p.userId ? { ...a, isOnline: p.isOnline } : a)));
@@ -131,6 +140,9 @@ export function Inbox() {
 
     function handleNewConversation(payload: any) {
       const item = toConversationListItem(payload);
+      if (!item.assignedUser && filter === "mine") {
+        setFilter("unassigned");
+      }
       if (matchesFilter(item, filter, currentUser.id)) {
         setConversations((prev) => {
           const withoutDuplicate = prev.filter((c) => c.id !== item.id);
@@ -165,6 +177,9 @@ export function Inbox() {
         ...toConversationListItem(payload),
         status: payload.status,
       };
+      if (!item.assignedUser && filter === "mine") {
+        setFilter("unassigned");
+      }
       setConversations((prev) => {
         const exists = prev.some((c) => c.id === item.id);
         if (!exists) {

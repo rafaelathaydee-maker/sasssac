@@ -95,12 +95,26 @@ async function usePrismaAuthState(companyId: string) {
   };
 }
 
-function getText(message: any) {
+function unwrapMessage(message: any): any {
+  return (
+    message?.ephemeralMessage?.message ||
+    message?.viewOnceMessage?.message ||
+    message?.viewOnceMessageV2?.message ||
+    message?.documentWithCaptionMessage?.message ||
+    message
+  );
+}
+
+function getText(rawMessage: any) {
+  const message = unwrapMessage(rawMessage);
   return (
     message?.conversation ||
     message?.extendedTextMessage?.text ||
     message?.imageMessage?.caption ||
     message?.videoMessage?.caption ||
+    message?.buttonsResponseMessage?.selectedDisplayText ||
+    message?.listResponseMessage?.title ||
+    message?.templateButtonReplyMessage?.selectedDisplayText ||
     ""
   );
 }
@@ -111,7 +125,10 @@ async function processIncomingMessage(companyId: string, message: any) {
   if (!remoteJid || remoteJid === "status@broadcast") return;
 
   const content = getText(message.message);
-  if (!content.trim()) return;
+  if (!content.trim()) {
+    logger.info({ companyId, remoteJid }, "Mensagem WhatsApp ignorada sem texto suportado");
+    return;
+  }
 
   const phone = remoteJid.split("@")[0];
   const contact =
@@ -170,6 +187,7 @@ async function processIncomingMessage(companyId: string, message: any) {
     conversationId: conversation.id,
   });
   io.to(`conversation:${conversation.id}`).emit("message:new", saved);
+  logger.info({ companyId, conversationId: conversation.id, isNewConversation }, "Mensagem WhatsApp recebida");
 }
 
 export function getWhatsappQrStatus(companyId: string) {
