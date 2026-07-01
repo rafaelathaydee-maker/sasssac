@@ -5,6 +5,7 @@ import { AuthenticatedRequest } from "../../middlewares/auth";
 import { assertChannelAllowed } from "../../lib/planLimits";
 import { logger } from "../../lib/logger";
 import { logAudit } from "../../lib/audit";
+import { getWhatsappQrStatus, startWhatsappQrSession, stopWhatsappQrSession } from "../../services/channels/whatsappQr";
 
 function maskConfig(c: any) {
   return { channel: c.channel, externalAccountId: c.externalAccountId, isActive: c.isActive, updatedAt: c.updatedAt, configured: true };
@@ -51,8 +52,22 @@ export async function upsertWhatsapp(req: AuthenticatedRequest, res: Response) {
 // DELETE /api/channels/whatsapp -> remove a configuração
 export async function removeWhatsapp(req: AuthenticatedRequest, res: Response) {
   const { companyId } = req.auth!;
+  await stopWhatsappQrSession(companyId!);
   await prisma.channelConfig
     .delete({ where: { companyId_channel: { companyId, channel: "WHATSAPP" } } })
     .catch(() => null);
   return res.status(204).send();
+}
+
+export async function connectWhatsappQr(req: AuthenticatedRequest, res: Response) {
+  const { companyId } = req.auth!;
+  await assertChannelAllowed(companyId!, "WHATSAPP");
+  const status = await startWhatsappQrSession(companyId!);
+  await logAudit({ actorUserId: req.auth!.userId, actorRole: req.auth!.role, companyId, action: "channel.whatsapp.qr.start", targetType: "channelConfig" });
+  return res.json(status);
+}
+
+export async function getWhatsappQr(req: AuthenticatedRequest, res: Response) {
+  const { companyId } = req.auth!;
+  return res.json(getWhatsappQrStatus(companyId!));
 }

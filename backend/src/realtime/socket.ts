@@ -2,6 +2,8 @@ import { Server as HttpServer } from "http";
 import { Server } from "socket.io";
 import { verifyToken } from "../lib/jwt";
 import { logger } from "../lib/logger";
+import { prisma } from "../lib/prisma";
+import { sendWhatsappQrMessage } from "../services/channels/whatsappQr";
 
 let io: Server | null = null;
 
@@ -24,6 +26,63 @@ export function initSocket(server: HttpServer, corsOrigin: string) {
 
   io.on("connection", (socket) => {
     logger.info({ socketId: socket.id }, "Socket conectado");
+
+    socket.on("conversation:join", ({ conversationId }: { conversationId?: string }) => {
+      if (conversationId) socket.join(`conversation:${conversationId}`);
+    });
+
+    socket.on("conversation:leave", ({ conversationId }: { conversationId?: string }) => {
+      if (conversationId) socket.leave(`conversation:${conversationId}`);
+    });
+
+    socket.on("typing:start", ({ conversationId }: { conversationId?: string }) => {
+      if (conversationId) socket.to(`conversation:${conversationId}`).emit("typing:update", { conversationId, isTyping: true, from: { type: "USER" } });
+    });
+
+    socket.on("typing:stop", ({ conversationId }: { conversationId?: string }) => {
+      if (conversationId) socket.to(`conversation:${conversationId}`).emit("typing:update", { conversationId, isTyping: false, from: { type: "USER" } });
+    });
+
+    socket.on("message:send", async (payload: { conversationId?: string; content?: string; type?: string; mediaUrl?: string; fileName?: string; mimeType?: string; fileSize?: number }) => {
+      const auth = socket.data.auth;
+      const conversationId = payload.conversationId;
+      const content = payload.content?.trim();
+      if (!auth?.companyId || !auth?.userId || !conversationId || !content) return;
+
+      try {
+        const conversation = await prisma.conversation.findFirst({
+          where: { id: conversationId, companyId: auth.companyId },
+          include: { contact: true },
+        });
+        if (!conversation) return;
+
+        const saved = await prisma.message.create({
+          data: {
+            conversationId,
+            userId: auth.userId,
+            senderType: payload.type === "INTERNAL" ? "SYSTEM" : "USER",
+            direction: payload.type === "INTERNAL" ? "INBOUND" : "OUTBOUND",
+            content,
+            type: payload.type === "INTERNAL" ? "INTERNAL" : ((payload.type as any) || "TEXT"),
+            mediaUrl: payload.mediaUrl,
+            fileName: payload.fileName,
+            mimeType: payload.mimeType,
+            fileSize: payload.fileSize,
+          },
+        });
+
+        await prisma.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: saved.createdAt } });
+
+        if (conversation.channel === "WHATSAPP" && conversation.externalId && payload.type !== "INTERNAL") {
+          await sendWhatsappQrMessage(auth.companyId, conversation.externalId, content);
+        }
+
+        io!.to(`conversation:${conversationId}`).emit("message:new", saved);
+        io!.to(`company:${auth.companyId}`).emit("conversation:updated", { conversationId, lastMessage: saved });
+      } catch (err) {
+        logger.error({ err, conversationId }, "Erro ao enviar mensagem");
+      }
+    });
   });
 
   return io;

@@ -22,6 +22,7 @@ export function Team() {
   const [qrMessage, setQrMessage] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [showWhatsapp, setShowWhatsapp] = useState(false);
+  const [waQrStatus, setWaQrStatus] = useState<{ status: string; qrDataUrl: string | null; jid: string | null } | null>(null);
   const [waPhoneId, setWaPhoneId] = useState("");
   const [waToken, setWaToken] = useState("");
   const [editing, setEditing] = useState<Agent | null>(null);
@@ -57,6 +58,7 @@ export function Team() {
     });
     api.get("/company/usage").then(({ data }) => setUsage(data));
     api.get("/channels").then(({ data }) => setChannels(data));
+    api.get("/channels/whatsapp/qr").then(({ data }) => setWaQrStatus(data)).catch(() => undefined);
     api.get("/departments").then(({ data }) => setDepartments(data));
     api.get("/quick-replies").then(({ data }) => setQuickReplies(data));
   }
@@ -114,6 +116,25 @@ export function Team() {
       setError(err?.response?.data?.error?.toString() || "Não foi possível salvar o WhatsApp");
     }
   }
+  async function connectWhatsappQr() {
+    setError(null);
+    setShowWhatsapp(true);
+    try {
+      const { data } = await api.post("/channels/whatsapp/qr", {});
+      setWaQrStatus(data);
+    } catch (err: any) {
+      setError(err?.response?.data?.error?.toString() || "Nao foi possivel iniciar o QR Code");
+    }
+  }
+  useEffect(() => {
+    if (!showWhatsapp) return;
+    const timer = setInterval(async () => {
+      const { data } = await api.get("/channels/whatsapp/qr");
+      setWaQrStatus(data);
+      if (data.status === "connected") load();
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [showWhatsapp]);
   async function removeWhatsapp() {
     if (!confirm("Remover a configuração do WhatsApp?")) return;
     await api.delete("/channels/whatsapp");
@@ -280,7 +301,7 @@ export function Team() {
                 Remover
               </button>
             ) : (
-              <button onClick={() => setShowWhatsapp(true)} className="rounded-md bg-slate-950 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800">
+              <button onClick={connectWhatsappQr} className="rounded-md bg-slate-950 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800">
                 Conectar WhatsApp
               </button>
             )}
@@ -450,7 +471,7 @@ export function Team() {
             {error && <p className="text-xs text-red-500">{error}</p>}
             <div className="flex gap-2 pt-2">
               <button type="button" onClick={() => setShowForm(false)} className="flex-1 border rounded-md py-2 text-sm">
-                Cancelar
+                Fechar
               </button>
               <button type="submit" className="flex-1 bg-blue-600 text-white rounded-md py-2 text-sm">
                 Salvar
@@ -462,38 +483,46 @@ export function Team() {
 
       {showWhatsapp && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/40 p-4">
-          <form onSubmit={saveWhatsapp} className="w-full max-w-md space-y-4 rounded-md bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md space-y-4 rounded-md bg-white p-6 shadow-xl">
             <h2 className="font-semibold text-slate-950">Conectar WhatsApp</h2>
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-              Conexao por QR Code tipo WhatsApp Web nao e oficial para SaaS. Este painel usa o caminho certo para empresas: WhatsApp Cloud API.
+            <div className="flex min-h-[260px] items-center justify-center rounded-md border border-slate-200 bg-slate-50 p-4">
+              {waQrStatus?.status === "connected" ? (
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-emerald-700">WhatsApp conectado</p>
+                  <p className="mt-1 text-xs text-slate-500">{waQrStatus.jid}</p>
+                </div>
+              ) : waQrStatus?.qrDataUrl ? (
+                <img src={waQrStatus.qrDataUrl} alt="QR Code do WhatsApp" className="h-56 w-56 rounded-md bg-white p-2 shadow-sm" />
+              ) : (
+                <p className="text-sm text-slate-500">Gerando QR Code...</p>
+              )}
             </div>
-            <p className="text-xs text-gray-400">Dados do número no WhatsApp Cloud API (Meta for Developers)</p>
+            <p className="hidden text-xs text-gray-400">Dados da conexao antiga</p>
             <input
               placeholder="Phone Number ID"
               value={waPhoneId}
               onChange={(e) => setWaPhoneId(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              required
+              className="hidden w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
             <input
               placeholder="Access Token"
               value={waToken}
               onChange={(e) => setWaToken(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              required
+              className="hidden w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
             {error && <p className="text-xs text-red-500">{error}</p>}
             <div className="flex gap-2 pt-2">
               <button type="button" onClick={() => setShowWhatsapp(false)} className="flex-1 rounded-md border border-slate-300 py-2 text-sm font-medium">
-                Cancelar
+                Fechar
               </button>
-              <button type="submit" className="flex-1 rounded-md bg-slate-950 py-2 text-sm font-medium text-white">
-                Conectar
+              <button type="button" onClick={connectWhatsappQr} className="flex-1 rounded-md bg-slate-950 py-2 text-sm font-medium text-white">
+                Novo QR
               </button>
             </div>
-          </form>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
