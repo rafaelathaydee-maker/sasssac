@@ -4,6 +4,10 @@
 export function getTenantSlugFromHost(): string | null {
   const host = window.location.hostname;
 
+  if (host.endsWith(".onrender.com")) {
+    return localStorage.getItem("devCompanySlug");
+  }
+
   if (host === "localhost" || host === "127.0.0.1" || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
     return localStorage.getItem("devCompanySlug");
   }
@@ -15,7 +19,7 @@ export function getTenantSlugFromHost(): string | null {
 
 export function isPlainDevHost(): boolean {
   const host = window.location.hostname;
-  return host === "localhost" || host === "127.0.0.1";
+  return host === "localhost" || host === "127.0.0.1" || host.endsWith(".onrender.com");
 }
 
 export function setDevCompanySlug(slug: string) {
