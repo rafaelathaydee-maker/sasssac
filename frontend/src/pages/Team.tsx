@@ -184,8 +184,8 @@ export function Team() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-slate-100 text-slate-900">
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
         <div>
           <h1 className="font-semibold text-gray-800">Gestão de equipe</h1>
           <p className="text-xs text-gray-400">{settings?.name}</p>
@@ -200,9 +200,9 @@ export function Team() {
         </div>
       </header>
 
-      <main className="p-6 max-w-3xl mx-auto space-y-6">
+      <main className="mx-auto max-w-6xl space-y-5 p-6">
         {usage && (
-          <div className="bg-white border rounded-lg p-4">
+          <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-gray-700">
                 Plano: <span className="text-blue-600">{usage.plan.name}</span>
@@ -243,7 +243,7 @@ export function Team() {
           </div>
         )}
 
-        <div className="bg-white border rounded-lg p-4">
+        <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-gray-700 mb-3">Personalização do widget (white-label)</p>
           <form onSubmit={saveBranding} className="space-y-2">
             <input placeholder="URL do logo" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} className="w-full border rounded-md px-3 py-1.5 text-sm" />
@@ -257,13 +257,16 @@ export function Team() {
           </form>
         </div>
 
-        <div className="bg-white border rounded-lg p-4">
-          <p className="text-sm font-medium text-gray-700 mb-3">Canais</p>
-          <div className="flex items-center justify-between py-2 border-b text-sm">
-            <span>Webchat</span>
-            <span className="text-xs text-green-600">Sempre ativo</span>
+        <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4">
+            <p className="text-sm font-semibold text-slate-900">Canais conectados</p>
+            <p className="mt-1 text-xs text-slate-500">Conecte os canais que chegam na caixa de atendimento da empresa.</p>
           </div>
-          <div className="flex items-center justify-between py-2 text-sm">
+          <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-3 text-sm">
+            <span>Webchat</span>
+            <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Sempre ativo</span>
+          </div>
+          <div className="mt-3 flex items-center justify-between rounded-md border border-slate-200 px-3 py-3 text-sm">
             <div>
               <span>WhatsApp</span>
               {channels.find((c) => c.channel === "WHATSAPP") && (
@@ -273,19 +276,19 @@ export function Team() {
               )}
             </div>
             {channels.find((c) => c.channel === "WHATSAPP") ? (
-              <button onClick={removeWhatsapp} className="text-xs text-red-500 hover:text-red-700">
+              <button onClick={removeWhatsapp} className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
                 Remover
               </button>
             ) : (
-              <button onClick={() => setShowWhatsapp(true)} className="text-xs text-blue-600 hover:underline">
-                Configurar
+              <button onClick={() => setShowWhatsapp(true)} className="rounded-md bg-slate-950 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800">
+                Conectar WhatsApp
               </button>
             )}
           </div>
         </div>
 
         {settings && (
-          <div className="bg-white border rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <div>
               <p className="text-sm font-medium text-gray-700">Distribuição automática de conversas</p>
               <p className="text-xs text-gray-400">
@@ -307,7 +310,7 @@ export function Team() {
           </div>
         )}
 
-        <div className="bg-white border rounded-lg p-4">
+        <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-medium text-gray-700">Departamentos</p>
             <Link to="/departments" className="text-xs text-blue-600 hover:underline">Gerenciar →</Link>
@@ -328,15 +331,15 @@ export function Team() {
               </li>
             ))}
           </ul>
-          <form onSubmit={createDepartment} className="flex gap-2">
-            <input placeholder="Novo departamento (ex: Vendas)" value={newDeptName} onChange={(e) => setNewDeptName(e.target.value)} className="flex-1 border rounded-md px-3 py-1.5 text-sm" />
+          <form onSubmit={createDepartment} className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]">
+            <input placeholder="Novo departamento (ex: Vendas)" value={newDeptName} onChange={(e) => setNewDeptName(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
             <input placeholder="Descrição (opcional)" value={newDeptDesc} onChange={(e) => setNewDeptDesc(e.target.value)} className="flex-1 border rounded-md px-3 py-1.5 text-sm" />
             <input placeholder="Palavras-chave (vírgula)" value={newDeptKeywords} onChange={(e) => setNewDeptKeywords(e.target.value)} className="flex-1 border rounded-md px-3 py-1.5 text-sm" />
-            <button type="submit" className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md">Criar</button>
+            <button type="submit" className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white">Criar</button>
           </form>
         </div>
 
-        <div className="bg-white border rounded-lg p-4">
+        <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-gray-700 mb-3">Respostas rápidas</p>
           <ul className="space-y-1 mb-3">
             {quickReplies.map((q) => (
@@ -354,7 +357,7 @@ export function Team() {
           </form>
         </div>
 
-        <div className="bg-white border rounded-lg">
+        <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <p className="font-medium text-sm text-gray-700">Agentes</p>
             <button onClick={openCreate} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700">
@@ -458,31 +461,34 @@ export function Team() {
       )}
 
       {showWhatsapp && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
-          <form onSubmit={saveWhatsapp} className="bg-white rounded-lg p-6 w-full max-w-sm space-y-3">
-            <h2 className="font-semibold text-gray-800">Configurar WhatsApp</h2>
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/40 p-4">
+          <form onSubmit={saveWhatsapp} className="w-full max-w-md space-y-4 rounded-md bg-white p-6 shadow-xl">
+            <h2 className="font-semibold text-slate-950">Conectar WhatsApp</h2>
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Conexao por QR Code tipo WhatsApp Web nao e oficial para SaaS. Este painel usa o caminho certo para empresas: WhatsApp Cloud API.
+            </div>
             <p className="text-xs text-gray-400">Dados do número no WhatsApp Cloud API (Meta for Developers)</p>
             <input
               placeholder="Phone Number ID"
               value={waPhoneId}
               onChange={(e) => setWaPhoneId(e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               required
             />
             <input
               placeholder="Access Token"
               value={waToken}
               onChange={(e) => setWaToken(e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               required
             />
             {error && <p className="text-xs text-red-500">{error}</p>}
             <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => setShowWhatsapp(false)} className="flex-1 border rounded-md py-2 text-sm">
+              <button type="button" onClick={() => setShowWhatsapp(false)} className="flex-1 rounded-md border border-slate-300 py-2 text-sm font-medium">
                 Cancelar
               </button>
-              <button type="submit" className="flex-1 bg-blue-600 text-white rounded-md py-2 text-sm">
-                Salvar
+              <button type="submit" className="flex-1 rounded-md bg-slate-950 py-2 text-sm font-medium text-white">
+                Conectar
               </button>
             </div>
           </form>

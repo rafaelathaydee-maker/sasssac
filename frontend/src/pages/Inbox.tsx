@@ -305,20 +305,25 @@ export function Inbox() {
     setConversations((prev) => prev.map((c) => (c.contact.id === contact.id ? { ...c, contact } : c)));
   }
 
+  function handleAdminNavigation(path: string) {
+    if (path) navigate(path);
+  }
+
   const selectedConversation = useMemo(
     () => conversations.find((c) => c.id === selectedId) || null,
     [conversations, selectedId]
   );
 
   return (
-    <div className="h-screen flex">
-      <aside className="w-80 border-r flex flex-col bg-white">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
+    <div className="flex h-screen gap-4 bg-slate-100 p-4 text-slate-900">
+      <aside className="flex w-[360px] min-w-[320px] flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 p-4">
+          <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-semibold text-sm text-gray-800">{company?.name}</p>
             <p className="text-xs text-gray-400">{user?.name}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-[220px] flex-wrap items-center justify-end gap-2">
             {user?.role === "ADMIN" && (
               <>
                 <Link to="/chatbot" className="text-xs text-gray-400 hover:text-blue-600">Chatbot</Link>
@@ -331,28 +336,29 @@ export function Inbox() {
                 </Link>
               </>
             )}
-            <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-red-500">
+            <button onClick={handleLogout} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600">
               Sair
             </button>
           </div>
+          </div>
         </div>
 
-        <div className="px-3 pt-2 pb-1">
+        <div className="px-4 pt-3 pb-2">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por cliente ou mensagem..."
-            className="w-full text-sm border rounded-full px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-slate-400 focus:bg-white"
           />
         </div>
 
-        <div className="flex border-b text-xs">
+        <div className="grid grid-cols-3 gap-1 border-b border-slate-200 px-4 pb-3 text-xs">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setFilter(t.key)}
-              className={`flex-1 py-2 font-medium relative ${
-                filter === t.key ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-400"
+              className={`relative rounded-md px-2 py-2 font-medium ${
+                filter === t.key ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
               }`}
             >
               {t.label}
@@ -365,11 +371,11 @@ export function Inbox() {
           ))}
         </div>
 
-        <div className="flex gap-2 px-3 py-2 border-b">
+        <div className="grid gap-2 border-b border-slate-200 px-4 py-3">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as ConversationStatus | "")}
-            className="flex-1 text-xs border rounded-md px-1.5 py-1 text-gray-600"
+            className="w-full rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600"
           >
             <option value="">Todos os status</option>
             <option value="OPEN">Aberta</option>
@@ -380,7 +386,7 @@ export function Inbox() {
             <select
               value={agentFilter}
               onChange={(e) => setAgentFilter(e.target.value)}
-              className="flex-1 text-xs border rounded-md px-1.5 py-1 text-gray-600"
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600"
             >
               <option value="">Todos os agentes</option>
               {agents.map((a) => (
@@ -394,7 +400,7 @@ export function Inbox() {
             <select
               value={departmentFilter}
               onChange={(e) => setDepartmentFilter(e.target.value)}
-              className="flex-1 text-xs border rounded-md px-1.5 py-1 text-gray-600"
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600"
             >
               <option value="">Todos os deptos</option>
               <option value="mine">Meu departamento</option>
@@ -411,7 +417,7 @@ export function Inbox() {
         <AgentsPresence agents={agents} />
       </aside>
 
-      <main className="flex-1">
+      <main className="min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
         {selectedConversation && user ? (
           <ChatWindow
             title={selectedConversation.contact.name}
