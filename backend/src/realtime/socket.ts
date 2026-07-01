@@ -4,6 +4,7 @@ import { verifyToken } from "../lib/jwt";
 import { logger } from "../lib/logger";
 import { prisma } from "../lib/prisma";
 import { sendWhatsappQrMessage } from "../services/channels/whatsappQr";
+import { isEvolutionEnabled, sendEvolutionWhatsappMessage } from "../services/channels/evolutionProvider";
 
 let io: Server | null = null;
 
@@ -74,7 +75,8 @@ export function initSocket(server: HttpServer, corsOrigin: string) {
         await prisma.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: saved.createdAt } });
 
         if (conversation.channel === "WHATSAPP" && conversation.externalId && payload.type !== "INTERNAL") {
-          await sendWhatsappQrMessage(auth.companyId, conversation.externalId, content);
+          if (isEvolutionEnabled()) await sendEvolutionWhatsappMessage(auth.companyId, conversation.externalId, content);
+          else await sendWhatsappQrMessage(auth.companyId, conversation.externalId, content);
         }
 
         io!.to(`conversation:${conversationId}`).emit("message:new", saved);

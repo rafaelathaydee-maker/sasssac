@@ -6,6 +6,7 @@ import { assertChannelAllowed } from "../../lib/planLimits";
 import { logger } from "../../lib/logger";
 import { logAudit } from "../../lib/audit";
 import { getWhatsappQrStatus, startWhatsappQrSession, stopWhatsappQrSession } from "../../services/channels/whatsappQr";
+import { getEvolutionWhatsappStatus, isEvolutionEnabled, removeEvolutionWhatsapp, startEvolutionWhatsapp } from "../../services/channels/evolutionProvider";
 
 function maskConfig(c: any) {
   return { channel: c.channel, externalAccountId: c.externalAccountId, isActive: c.isActive, updatedAt: c.updatedAt, configured: true };
@@ -52,6 +53,7 @@ export async function upsertWhatsapp(req: AuthenticatedRequest, res: Response) {
 // DELETE /api/channels/whatsapp -> remove a configuração
 export async function removeWhatsapp(req: AuthenticatedRequest, res: Response) {
   const { companyId } = req.auth!;
+  if (isEvolutionEnabled()) await removeEvolutionWhatsapp(companyId!);
   await stopWhatsappQrSession(companyId!);
   await prisma.channelConfig
     .delete({ where: { companyId_channel: { companyId, channel: "WHATSAPP" } } })
@@ -62,12 +64,13 @@ export async function removeWhatsapp(req: AuthenticatedRequest, res: Response) {
 export async function connectWhatsappQr(req: AuthenticatedRequest, res: Response) {
   const { companyId } = req.auth!;
   await assertChannelAllowed(companyId!, "WHATSAPP");
-  const status = await startWhatsappQrSession(companyId!);
+  const status = isEvolutionEnabled() ? await startEvolutionWhatsapp(companyId!) : await startWhatsappQrSession(companyId!);
   await logAudit({ actorUserId: req.auth!.userId, actorRole: req.auth!.role, companyId, action: "channel.whatsapp.qr.start", targetType: "channelConfig" });
   return res.json(status);
 }
 
 export async function getWhatsappQr(req: AuthenticatedRequest, res: Response) {
   const { companyId } = req.auth!;
+  if (isEvolutionEnabled()) return res.json(await getEvolutionWhatsappStatus(companyId!));
   return res.json(getWhatsappQrStatus(companyId!));
 }

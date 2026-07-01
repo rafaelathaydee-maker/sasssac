@@ -129,12 +129,33 @@ async function processIncomingMessage(companyId: string, message: any) {
     logger.info({ companyId, remoteJid }, "Mensagem WhatsApp ignorada sem texto suportado");
     return;
   }
+  await ingestWhatsappTextMessage({
+    companyId,
+    remoteJid,
+    content,
+    pushName: message.pushName,
+    messageId: message.key.id,
+  });
+}
 
+export async function ingestWhatsappTextMessage({
+  companyId,
+  remoteJid,
+  content,
+  pushName,
+  messageId,
+}: {
+  companyId: string;
+  remoteJid: string;
+  content: string;
+  pushName?: string;
+  messageId?: string;
+}) {
   const phone = remoteJid.split("@")[0];
   const contact =
     (await prisma.contact.findFirst({ where: { companyId, phone } })) ||
     (await prisma.contact.create({
-      data: { companyId, phone, name: message.pushName || phone },
+      data: { companyId, phone, name: pushName || phone },
     }));
 
   let isNewConversation = false;
@@ -163,7 +184,7 @@ async function processIncomingMessage(companyId: string, message: any) {
       contactId: contact.id,
       senderType: "CONTACT",
       direction: "INBOUND",
-      channelMessageId: message.key.id,
+      channelMessageId: messageId,
       content,
     },
   });

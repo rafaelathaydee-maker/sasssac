@@ -123,7 +123,7 @@ export function Team() {
       const { data } = await api.post("/channels/whatsapp/qr", {});
       setWaQrStatus(data);
     } catch (err: any) {
-      setError(err?.response?.data?.error?.toString() || "Nao foi possivel iniciar o QR Code");
+      setError(err?.response?.data?.error?.toString() || err?.response?.data?.message?.toString() || "Nao foi possivel iniciar o QR Code");
     }
   }
   useEffect(() => {
