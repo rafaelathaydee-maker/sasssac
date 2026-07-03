@@ -1,1 +1,6 @@
 FROM evoapicloud/evolution-api:latest
+
+ENV DATABASE_PROVIDER=postgresql
+ENV CACHE_REDIS_ENABLED=false
+ENV CACHE_LOCAL_ENABLED=true
+ENV LOG_LEVEL=ERROR,WARN,INFO

@@ -29,7 +29,13 @@ No servico `sasssac-evolution`, adicione:
 AUTHENTICATION_API_KEY=coloque-uma-chave-grande-aqui
 SERVER_URL=https://URL-DA-EVOLUTION.onrender.com
 CORS_ORIGIN=*
+DATABASE_PROVIDER=postgresql
+DATABASE_CONNECTION_URI=postgresql://USUARIO:SENHA@HOST:PORTA/BANCO?schema=evolution_api
+CACHE_REDIS_ENABLED=false
+CACHE_LOCAL_ENABLED=true
 ```
+
+Voce pode usar o mesmo Postgres do Sasssac. Pegue a `External Database URL` ou `Internal Database URL` do banco no Render e adicione `?schema=evolution_api` no final. Se a URL ja tiver `?sslmode=require`, use `&schema=evolution_api`.
 
 Depois que a Evolution estiver live, volte no backend `sasssac-backend` e adicione:
 
